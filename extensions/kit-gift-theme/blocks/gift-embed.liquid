@@ -1,0 +1,86 @@
+{%- comment -%}
+  App embed: watches the cart and offers (or auto-adds) free gifts configured in the app.
+  Enable it under Online Store > Themes > Customize > App embeds.
+{%- endcomment -%}
+{%- assign kitgift_config = app.metafields.kitgift.config.value -%}
+<script type="application/json" id="kitgift-config">{{ kitgift_config | json }}</script>
+<script type="application/json" id="kitgift-settings">
+  {
+    "root": {{ routes.root_url | json }},
+    "currency": {{ cart.currency.iso_code | json }},
+    "moneyFormat": {{ shop.money_format | json }},
+    "afterAdd": {{ block.settings.after_add | json }},
+    "heading": {{ block.settings.heading | json }},
+    "addLabel": {{ block.settings.add_label | json }},
+    "declineLabel": {{ block.settings.decline_label | json }},
+    "productBadge": {{ block.settings.product_badge | json }},
+    "badgeText": {{ block.settings.badge_text | json }}
+    {%- if template.name == 'product' and product -%},
+    "product": { "id": {{ product.id | json }}, "vendor": {{ product.vendor | json }} }
+    {%- endif %}
+  }
+</script>
+<style>
+  :root {
+    --kitgift-accent: {{ block.settings.accent }};
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Free gift offers",
+  "target": "body",
+  "javascript": "kitgift-gift.js",
+  "stylesheet": "kitgift.css",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Popup heading",
+      "default": "You unlocked a free gift!"
+    },
+    {
+      "type": "text",
+      "id": "add_label",
+      "label": "Accept button",
+      "default": "Add my free gift"
+    },
+    {
+      "type": "text",
+      "id": "decline_label",
+      "label": "Decline button",
+      "default": "No thanks"
+    },
+    {
+      "type": "select",
+      "id": "after_add",
+      "label": "After a gift is added",
+      "options": [
+        { "value": "reload", "label": "Reload the page" },
+        { "value": "cart", "label": "Go to the cart page" },
+        { "value": "event", "label": "Stay (theme listens for kitgift:cart-updated)" }
+      ],
+      "default": "reload"
+    },
+    {
+      "type": "checkbox",
+      "id": "product_badge",
+      "label": "Show gift notice on qualifying product pages",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "badge_text",
+      "label": "Product page notice",
+      "info": "Use {gift} for the gift name.",
+      "default": "🎁 Get a FREE {gift} with this item"
+    },
+    {
+      "type": "color",
+      "id": "accent",
+      "label": "Accent color",
+      "default": "#111111"
+    }
+  ]
+}
+{% endschema %}

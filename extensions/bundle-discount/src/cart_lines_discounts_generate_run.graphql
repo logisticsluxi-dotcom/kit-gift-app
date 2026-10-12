@@ -1,0 +1,30 @@
+query CartInput {
+  cart {
+    lines {
+      id
+      quantity
+      kit: attribute(key: "_kit") {
+        value
+      }
+      gift: attribute(key: "_free_gift") {
+        value
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+            vendor
+          }
+        }
+      }
+    }
+  }
+  discount {
+    discountClasses
+    metafield(namespace: "$app:kitgift", key: "config") {
+      jsonValue
+    }
+  }
+}

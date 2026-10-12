@@ -1,0 +1,11 @@
+.cache
+.shopify
+build
+node_modules
+**/node_modules
+extensions/*/dist
+.env
+.env.*
+prisma/*.sqlite*
+*.log
+fly.toml

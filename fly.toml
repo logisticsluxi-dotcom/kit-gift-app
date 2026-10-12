@@ -1,0 +1,28 @@
+app = "dermlane-kit-gift"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  DATABASE_URL = "file:/data/prod.sqlite"
+  SHOPIFY_APP_URL = "https://dermlane-kit-gift.fly.dev"
+  SCOPES = "read_products,write_discounts"
+
+# SQLite lives on this volume so sessions survive deploys. One machine only (SQLite isn't shared).
+[mounts]
+  source = "kitgift_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

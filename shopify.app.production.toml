@@ -1,0 +1,30 @@
+# Production app (hosted on Fly.io). Deploy with: npx shopify app deploy --config production
+# Dev keeps using shopify.app.toml (the dev-store app).
+
+client_id = "a6bdefab5ee5948702c0e389c536c513"
+application_url = "https://dermlane-kit-gift.fly.dev"
+embedded = true
+name = "kit gift app"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,write_discounts"
+
+[auth]
+redirect_urls = [ "https://dermlane-kit-gift.fly.dev/api/auth" ]
+
+[webhooks]
+api_version = "2027-01"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+[build]
+include_config_on_deploy = true
+# Never point the live app at a local dev tunnel.
+automatically_update_urls_on_dev = false

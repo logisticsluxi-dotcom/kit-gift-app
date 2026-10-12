@@ -1,0 +1,33 @@
+{%- comment -%}
+  "Build your own kit & save" button for product pages (or anywhere).
+  Links to the page that holds the kit builder block, optionally pre-filtered to this product's vendor.
+{%- endcomment -%}
+{%- assign kit_config = app.metafields.kitgift.config.value.kit -%}
+{%- if kit_config.enabled -%}
+  {%- assign href = block.settings.page.url | default: '#' -%}
+  {%- if block.settings.filter_by_vendor and product -%}
+    {%- assign vendor_param = product.vendor | url_param_escape -%}
+    {%- assign href = href | append: '?vendor=' | append: vendor_param -%}
+  {%- endif -%}
+  <a class="kitgift-cta" href="{{ href }}" style="--kitgift-accent: {{ block.settings.accent }};">
+    <span class="kitgift-cta__label">{{ block.settings.label | escape }}</span>
+    {%- if block.settings.sublabel != blank -%}
+      <span class="kitgift-cta__sub">{{ block.settings.sublabel | escape }}</span>
+    {%- endif -%}
+  </a>
+  <link rel="stylesheet" href="{{ 'kitgift.css' | asset_url }}">
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Build your kit button",
+  "target": "section",
+  "settings": [
+    { "type": "page", "id": "page", "label": "Kit builder page" },
+    { "type": "text", "id": "label", "label": "Label", "default": "Build your own kit & save" },
+    { "type": "text", "id": "sublabel", "label": "Sub label", "default": "Choose 3+ items and get up to 20% off" },
+    { "type": "checkbox", "id": "filter_by_vendor", "label": "Only show this product's vendor in the kit", "default": true },
+    { "type": "color", "id": "accent", "label": "Accent color", "default": "#111111" }
+  ]
+}
+{% endschema %}
