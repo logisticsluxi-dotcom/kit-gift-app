@@ -10,8 +10,8 @@
  *     triggerProductIds: string[],   // product GIDs
  *     triggerVendors: string[],
  *     minTriggerQty: number,         // units of trigger items required
- *     giftVariantId: string,         // variant GID
- *     giftQuantity: number,          // free units granted
+ *     giftVariantIds: string[],      // variant GIDs the shopper can pick from
+ *     giftQuantity: number,          // free units granted (across all options)
  *   }],
  *   kit: {
  *     enabled, message,
@@ -42,7 +42,7 @@ export function cartLinesDiscountsGenerateRun(input) {
   const giftLineIds = new Set();
 
   for (const rule of config.gifts ?? []) {
-    if (!rule.enabled || !rule.giftVariantId) continue;
+    if (!rule.enabled || giftVariants(rule).size === 0) continue;
     const result = applyGiftRule(rule, lines);
     for (const target of result) {
       giftLineIds.add(target.cartLine.id);
@@ -86,8 +86,8 @@ export function applyGiftRule(rule, lines) {
     if (rule.triggerType === "vendors") return vendors.includes(norm(product.vendor));
     return productIds.has(product.id);
   };
-  const isGift = (/** @type {any} */ line) =>
-    line.merchandise.id === rule.giftVariantId;
+  const variants = giftVariants(rule);
+  const isGift = (/** @type {any} */ line) => variants.has(line.merchandise.id);
 
   const minTrigger = Math.max(1, Number(rule.minTriggerQty) || 1);
   const maxFree = Math.max(1, Number(rule.giftQuantity) || 1);
@@ -164,6 +164,15 @@ export function applyKit(kit, lines, excludeIds) {
     });
   }
   return candidates;
+}
+
+/**
+ * @param {any} rule
+ * @returns {Set<string>}
+ */
+function giftVariants(rule) {
+  // `giftVariantId` is the older single-gift format.
+  return new Set([...(rule.giftVariantIds ?? []), rule.giftVariantId].filter(Boolean));
 }
 
 /** @param {string | undefined | null} s */

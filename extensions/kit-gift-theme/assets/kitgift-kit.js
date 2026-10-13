@@ -27,7 +27,6 @@
       .filter((t) => t.minItems > 0 && t.percent > 0)
       .sort((a, b) => a.minItems - b.minItems);
     if (tiers.length === 0) return;
-    const minItems = tiers[0].minItems;
 
     const moneyFormat = el.dataset.moneyFormat;
     const allowMultiples = el.dataset.allowMultiples === "true";
@@ -36,7 +35,7 @@
     // Vendor filter: ?vendor= link > block setting > app setting.
     const urlVendor = new URLSearchParams(location.search).get("vendor");
     const blockVendors = (el.dataset.vendorFilter || "").split(",").map(norm).filter(Boolean);
-    const appVendors = (config.vendors || []).map(norm).filter(Boolean);
+    const appVendors = [...new Set((config.vendors || []).map(norm).filter(Boolean))];
     let allowed = blockVendors.length ? blockVendors : appVendors;
     if (urlVendor && (allowed.length === 0 || allowed.includes(norm(urlVendor)))) {
       allowed = [norm(urlVendor)];
@@ -52,101 +51,168 @@
       return ok;
     });
 
-    const tierList = el.querySelector("[data-kitgift-tiers]");
-    if (tierList) {
-      tierList.innerHTML = "";
-      for (const t of tiers) {
-        const li = document.createElement("li");
-        li.textContent = `${t.minItems}+ items: ${t.percent}% off`;
-        li.dataset.min = String(t.minItems);
-        tierList.appendChild(li);
-      }
-    }
-
-    const state = new Map(); // card -> quantity
     const variantOf = (card) => {
       const input = card.querySelector("[data-kitgift-variant]");
       const option = input?.tagName === "SELECT" ? input.selectedOptions[0] : input;
-      return { id: Number(input?.value), price: Number(option?.dataset.price || 0) };
+      return {
+        id: Number(input?.value),
+        price: Number(option?.dataset.price || 0),
+        label: input?.tagName === "SELECT" ? option?.textContent.split("–")[0].trim() : "",
+      };
     };
 
+    /** @type {{ card: Element, id: number, price: number, title: string, image: string }[]} */
+    let picks = [];
+    let size = tiers[0].minItems;
+    const tierFor = (n) => tiers.find((t) => t.minItems === n);
+
+    const sizesEl = el.querySelector("[data-kitgift-sizes]");
+    const slotsEl = el.querySelector("[data-kitgift-slots]");
     const status = el.querySelector("[data-kitgift-status]");
     const total = el.querySelector("[data-kitgift-total]");
-    const progress = el.querySelector("[data-kitgift-progress]");
+    const message = el.querySelector("[data-kitgift-message]");
     const addButton = el.querySelector("[data-kitgift-add]");
+    const addLabel = addButton.textContent.trim();
+
+    let messageTimer;
+    const flash = (text) => {
+      message.textContent = text;
+      clearTimeout(messageTimer);
+      messageTimer = setTimeout(() => (message.textContent = ""), 3500);
+    };
+
+    // ---- Kit size buttons ----
+    for (const tier of tiers) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "kitgift-size";
+      button.setAttribute("role", "radio");
+      button.dataset.size = String(tier.minItems);
+      button.innerHTML = `<strong></strong><span></span>`;
+      button.querySelector("strong").textContent = `${tier.minItems} items`;
+      button.querySelector("span").textContent = `Save ${tier.percent}%`;
+      button.addEventListener("click", () => {
+        size = tier.minItems;
+        if (picks.length > size) {
+          picks = picks.slice(0, size);
+          flash(`Kit resized to ${size} items — removed the extra picks.`);
+        }
+        render();
+      });
+      sizesEl.appendChild(button);
+    }
+
+    const removePick = (index) => {
+      picks.splice(index, 1);
+      render();
+    };
 
     const render = () => {
-      let count = 0;
-      let subtotal = 0;
-      for (const card of cards) {
-        const qty = state.get(card) || 0;
-        count += qty;
-        subtotal += qty * variantOf(card).price;
-        card.querySelector("[data-kitgift-count]").textContent = String(qty);
-        card.classList.toggle("is-selected", qty > 0);
-        card.querySelector("[data-kitgift-plus]").disabled = !allowMultiples && qty >= 1;
-        card.querySelector("[data-kitgift-minus]").disabled = qty === 0;
-      }
+      const tier = tierFor(size);
 
-      const current = [...tiers].reverse().find((t) => count >= t.minItems);
-      const next = tiers.find((t) => count < t.minItems);
-
-      if (!current) {
-        const need = minItems - count;
-        status.textContent = `${count} selected — add ${need} more to save ${tiers[0].percent}%`;
-      } else if (next) {
-        const need = next.minItems - count;
-        status.textContent = `${count} selected — you're saving ${current.percent}%! Add ${need} more for ${next.percent}% off`;
-      } else {
-        status.textContent = `${count} selected — you're saving ${current.percent}%!`;
-      }
-
-      if (current && subtotal > 0) {
-        const discounted = Math.round(subtotal * (1 - current.percent / 100));
-        total.innerHTML = `<s></s> <strong></strong>`;
-        total.querySelector("s").textContent = formatMoney(subtotal, moneyFormat);
-        total.querySelector("strong").textContent = formatMoney(discounted, moneyFormat);
-      } else {
-        total.textContent = subtotal > 0 ? formatMoney(subtotal, moneyFormat) : "";
-      }
-
-      const goal = tiers[tiers.length - 1].minItems;
-      progress.style.width = `${Math.min(100, (count / goal) * 100)}%`;
-      tierList?.querySelectorAll("li").forEach((li) => {
-        li.classList.toggle("is-reached", count >= Number(li.dataset.min));
+      sizesEl.querySelectorAll(".kitgift-size").forEach((b) => {
+        const active = Number(b.dataset.size) === size;
+        b.classList.toggle("is-active", active);
+        b.setAttribute("aria-checked", String(active));
       });
-      addButton.disabled = count < minItems;
+
+      // Slots: one box per item in the chosen kit size.
+      slotsEl.innerHTML = "";
+      slotsEl.style.setProperty("--kitgift-slots", String(size));
+      for (let i = 0; i < size; i++) {
+        const pick = picks[i];
+        const slot = document.createElement("div");
+        slot.className = `kitgift-slot${pick ? " is-filled" : ""}`;
+        if (pick) {
+          if (pick.image) {
+            const img = document.createElement("img");
+            img.src = pick.image;
+            img.alt = pick.title;
+            slot.appendChild(img);
+          } else {
+            slot.textContent = pick.title;
+          }
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "kitgift-slot__remove";
+          remove.setAttribute("aria-label", `Remove ${pick.title}`);
+          remove.textContent = "×";
+          remove.addEventListener("click", () => removePick(i));
+          slot.appendChild(remove);
+          slot.title = pick.title;
+        } else {
+          slot.innerHTML = `<span>${i + 1}</span>`;
+        }
+        slotsEl.appendChild(slot);
+      }
+
+      // Cards: count badges and button state.
+      const full = picks.length >= size;
+      for (const card of cards) {
+        const count = picks.filter((p) => p.card === card).length;
+        const badge = card.querySelector("[data-kitgift-count]");
+        badge.hidden = count === 0;
+        badge.textContent = count > 1 ? `×${count}` : "✓";
+        card.classList.toggle("is-selected", count > 0);
+        const button = card.querySelector("[data-kitgift-pick]");
+        const blocked = full || (!allowMultiples && count > 0);
+        button.disabled = blocked;
+        button.textContent = !allowMultiples && count > 0 ? "In your kit" : full ? "Kit is full" : "Add to kit";
+      }
+
+      // Summary
+      const subtotal = picks.reduce((sum, p) => sum + p.price, 0);
+      const left = size - picks.length;
+      status.textContent =
+        left > 0
+          ? `${picks.length} of ${size} picked — add ${left} more to save ${tier.percent}%`
+          : `Your kit is ready — you're saving ${tier.percent}%!`;
+      if (subtotal > 0) {
+        const discounted = Math.round(subtotal * (1 - tier.percent / 100));
+        total.innerHTML = left > 0 ? "<span></span>" : "<s></s> <strong></strong>";
+        if (left > 0) total.querySelector("span").textContent = formatMoney(subtotal, moneyFormat);
+        else {
+          total.querySelector("s").textContent = formatMoney(subtotal, moneyFormat);
+          total.querySelector("strong").textContent = formatMoney(discounted, moneyFormat);
+        }
+      } else {
+        total.textContent = "";
+      }
+      addButton.disabled = left > 0;
+      addButton.textContent = left > 0 ? addLabel : `${addLabel} · Save ${tier.percent}%`;
     };
 
     for (const card of cards) {
-      card.querySelector("[data-kitgift-plus]").addEventListener("click", () => {
-        state.set(card, (state.get(card) || 0) + 1);
+      card.querySelector("[data-kitgift-pick]").addEventListener("click", () => {
+        if (picks.length >= size) {
+          const bigger = tiers.find((t) => t.minItems > size);
+          flash(bigger ? `Your kit is full. Choose ${bigger.minItems} items to add more.` : "Your kit is full.");
+          return;
+        }
+        const variant = variantOf(card);
+        picks.push({
+          card,
+          id: variant.id,
+          price: variant.price,
+          title: [card.dataset.title, variant.label].filter(Boolean).join(" – "),
+          image: card.dataset.image || "",
+        });
         render();
       });
-      card.querySelector("[data-kitgift-minus]").addEventListener("click", () => {
-        state.set(card, Math.max(0, (state.get(card) || 0) - 1));
-        render();
-      });
-      card.querySelector("select[data-kitgift-variant]")?.addEventListener("change", render);
     }
 
     addButton.addEventListener("click", async () => {
+      if (picks.length < size) return;
       const kitId = `kit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-      const items = [];
-      for (const card of cards) {
-        const qty = state.get(card) || 0;
-        if (qty > 0) {
-          items.push({
-            id: variantOf(card).id,
-            quantity: qty,
-            properties: { _kit: kitId, Bundle: config.title || "Build your own kit" },
-          });
-        }
-      }
-      if (items.length === 0) return;
+      const quantities = new Map();
+      for (const p of picks) quantities.set(p.id, (quantities.get(p.id) || 0) + 1);
+      const items = [...quantities].map(([id, quantity]) => ({
+        id,
+        quantity,
+        properties: { _kit: kitId, Bundle: config.title || "Build your own kit" },
+      }));
 
       addButton.disabled = true;
-      const label = addButton.textContent;
       addButton.textContent = "Adding…";
       try {
         const res = await fetch(`${root}cart/add.js`, {
@@ -160,20 +226,13 @@
         }
         document.dispatchEvent(new CustomEvent("kitgift:cart-updated", { bubbles: true }));
         const after = el.dataset.afterAdd;
-        if (after === "checkout") location.href = `${root}checkout`;
-        else if (after === "cart") location.href = `${root}cart`;
-        else {
-          state.clear();
-          addButton.textContent = "Added!";
-          setTimeout(() => {
-            addButton.textContent = label;
-            render();
-          }, 1500);
-          return;
-        }
+        if (after === "checkout") return void (location.href = `${root}checkout`);
+        if (after === "cart") return void (location.href = `${root}cart`);
+        picks = [];
+        flash("Kit added to your cart!");
+        render();
       } catch (err) {
-        alert(err.message);
-        addButton.textContent = label;
+        flash(err.message);
         render();
       }
     });

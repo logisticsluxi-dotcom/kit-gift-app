@@ -25,6 +25,5 @@ api_version = "2027-01"
   topics = [ "app/scopes_update" ]
 
 [build]
-include_config_on_deploy = true
 # Never point the live app at a local dev tunnel.
 automatically_update_urls_on_dev = false

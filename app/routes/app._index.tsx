@@ -95,7 +95,7 @@ export default function Index() {
           <s-stack direction="inline" gap="base">
             <s-button href="/app/gifts">Manage gift offers</s-button>
             <s-button href={data.links.embed} target="_blank" variant="tertiary">
-              Turn on “Free gift offers” app embed
+              Turn on “Free gift in cart” app embed
             </s-button>
           </s-stack>
         </s-stack>

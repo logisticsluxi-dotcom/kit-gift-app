@@ -1,7 +1,7 @@
 {%- comment -%}
-  "Build your own kit" block. Add it to a page template (e.g. a page called "Build your kit").
-  Shoppers pick items from the chosen collection; once they hit the minimum the kit is added
-  to the cart with a shared `_kit` ID, and the app's discount function applies the tier discount.
+  "Build your own kit" section. Add it to a page template (e.g. page.kit) and assign that template to your kit page.
+  Shoppers choose a kit size (from the tiers set in the app), fill the empty boxes with products, and add the kit to
+  the cart. Kit items share a `_kit` ID so the app's discount function can apply the tier discount.
 {%- endcomment -%}
 {%- assign kit_config = app.metafields.kitgift.config.value.kit -%}
 {%- assign source = block.settings.collection -%}
@@ -24,7 +24,6 @@
     {%- if block.settings.subheading != blank -%}
       <p class="kitgift-kit__sub">{{ block.settings.subheading | escape }}</p>
     {%- endif -%}
-    <ol class="kitgift-kit__tiers" data-kitgift-tiers></ol>
   </div>
 
   {%- if kit_config == blank or kit_config.enabled != true -%}
@@ -33,18 +32,45 @@
     {%- endif -%}
   {%- elsif source == blank -%}
     {%- if request.design_mode -%}
-      <p class="kitgift-kit__notice">Choose a collection for this block in the theme editor.</p>
+      <p class="kitgift-kit__notice">Choose a collection for this section in the theme editor (“Products to choose from”).</p>
     {%- endif -%}
   {%- else -%}
+    <div class="kitgift-kit__panel">
+      <p class="kitgift-kit__step">1. Choose your kit size</p>
+      <div class="kitgift-kit__sizes" data-kitgift-sizes role="radiogroup" aria-label="Kit size"></div>
+
+      <p class="kitgift-kit__step">2. Fill your kit</p>
+      <div class="kitgift-kit__slots" data-kitgift-slots></div>
+
+      <div class="kitgift-kit__summary">
+        <div>
+          <p class="kitgift-kit__status" data-kitgift-status></p>
+          <p class="kitgift-kit__total" data-kitgift-total></p>
+        </div>
+        <button type="button" class="kitgift-kit__add" data-kitgift-add disabled>
+          {{ block.settings.button_label | escape }}
+        </button>
+      </div>
+      <p class="kitgift-kit__message" data-kitgift-message role="status" aria-live="polite"></p>
+    </div>
+
     <div class="kitgift-kit__grid">
       {%- paginate source.products by block.settings.limit -%}
         {%- for item in source.products -%}
           {%- if item.available == false -%}{%- continue -%}{%- endif -%}
-          <div class="kitgift-card" data-kitgift-card data-vendor="{{ item.vendor | escape }}">
+          {%- assign thumb = item.featured_image | image_url: width: 160 -%}
+          <div
+            class="kitgift-card"
+            data-kitgift-card
+            data-vendor="{{ item.vendor | escape }}"
+            data-title="{{ item.title | escape }}"
+            data-image="{{ thumb }}"
+          >
             <div class="kitgift-card__media">
               {%- if item.featured_image -%}
-                {{ item.featured_image | image_url: width: 500 | image_tag: loading: 'lazy', alt: item.title }}
+                {{ item.featured_image | image_url: width: 300 | image_tag: loading: 'lazy', alt: item.title, widths: '150, 300' }}
               {%- endif -%}
+              <span class="kitgift-card__count" data-kitgift-count hidden></span>
             </div>
             <p class="kitgift-card__vendor">{{ item.vendor | escape }}</p>
             <p class="kitgift-card__title">{{ item.title | escape }}</p>
@@ -62,27 +88,10 @@
                 {%- endfor -%}
               </select>
             {%- endif -%}
-            <div class="kitgift-card__qty">
-              <button type="button" data-kitgift-minus aria-label="Remove one">−</button>
-              <span data-kitgift-count>0</span>
-              <button type="button" data-kitgift-plus aria-label="Add one">+</button>
-            </div>
+            <button type="button" class="kitgift-card__add" data-kitgift-pick>Add to kit</button>
           </div>
         {%- endfor -%}
       {%- endpaginate -%}
-    </div>
-
-    <div class="kitgift-kit__bar" data-kitgift-bar>
-      <div class="kitgift-kit__progress"><span data-kitgift-progress></span></div>
-      <div class="kitgift-kit__bar-row">
-        <div>
-          <p class="kitgift-kit__status" data-kitgift-status></p>
-          <p class="kitgift-kit__total" data-kitgift-total></p>
-        </div>
-        <button type="button" class="kitgift-kit__add" data-kitgift-add disabled>
-          {{ block.settings.button_label | escape }}
-        </button>
-      </div>
     </div>
   {%- endif -%}
 </div>
@@ -96,7 +105,7 @@
   "target": "section",
   "settings": [
     { "type": "text", "id": "heading", "label": "Heading", "default": "Build your own kit & save" },
-    { "type": "text", "id": "subheading", "label": "Subheading", "default": "Pick your favorites — the more you add, the more you save." },
+    { "type": "text", "id": "subheading", "label": "Subheading", "default": "Pick your favorites — the bigger the kit, the more you save." },
     { "type": "collection", "id": "collection", "label": "Products to choose from" },
     {
       "type": "text",
@@ -106,7 +115,7 @@
     },
     { "type": "text", "id": "vendor_heading", "label": "Heading when filtered by vendor", "info": "Use {vendor}.", "default": "Build your {vendor} kit & save" },
     { "type": "range", "id": "limit", "label": "Max products", "min": 10, "max": 250, "step": 10, "default": 50 },
-    { "type": "range", "id": "columns", "label": "Columns (desktop)", "min": 2, "max": 6, "step": 1, "default": 4 },
+    { "type": "range", "id": "columns", "label": "Products per row (desktop)", "min": 2, "max": 8, "step": 1, "default": 6 },
     { "type": "checkbox", "id": "allow_multiples", "label": "Allow more than one of the same item", "default": true },
     { "type": "text", "id": "button_label", "label": "Button label", "default": "Add kit to cart" },
     {

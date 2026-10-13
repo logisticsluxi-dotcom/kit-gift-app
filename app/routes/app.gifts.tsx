@@ -5,7 +5,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { loadConfig, saveConfig } from "../lib/config.server";
-import { newGiftRule, type GiftRule } from "../lib/config";
+import { newGiftRule, unique, type GiftOption, type GiftRule } from "../lib/config";
 import { Checkbox, NumberField, Select, TextField } from "../components/fields";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -17,8 +17,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
   const gifts = JSON.parse(String((await request.formData()).get("gifts"))) as GiftRule[];
-  const invalid = gifts.find((g) => g.enabled && !g.giftVariantId);
-  if (invalid) return { ok: false, error: `“${invalid.name || "Untitled"}” needs a gift product` };
+  const invalid = gifts.find((g) => g.enabled && g.giftOptions.length === 0);
+  if (invalid) return { ok: false, error: `“${invalid.name || "Untitled"}” needs at least one gift product` };
   try {
     const { config } = await loadConfig(admin);
     await saveConfig(admin, { ...config, gifts });
@@ -81,28 +81,36 @@ export default function Gifts() {
     }
   };
 
-  const pickGift = async (rule: GiftRule) => {
+  const pickGifts = async (rule: GiftRule) => {
+    const byProduct = new Map<string, string[]>();
+    for (const o of rule.giftOptions) byProduct.set(o.productId, [...(byProduct.get(o.productId) ?? []), o.variantId]);
     const selected = (await shopify.resourcePicker({
       type: "product",
-      multiple: false,
+      multiple: true,
       action: "select",
+      selectionIds: [...byProduct].map(([id, variantIds]) => ({ id, variants: variantIds.map((v) => ({ id: v })) })),
     })) as PickedProduct[] | undefined;
-    const product = selected?.[0];
-    const variant = product?.variants?.[0];
-    if (!product || !variant) return;
+    if (!selected) return;
+    // One option per selected variant, so a shopper can pick e.g. a specific shade.
+    const giftOptions: GiftOption[] = selected.flatMap((product) =>
+      (product.variants ?? []).map((variant) => ({
+        productId: product.id,
+        variantId: variant.id,
+        title:
+          variant.title && variant.title !== "Default Title" ? `${product.title} – ${variant.title}` : product.title,
+        image: product.images?.[0]?.originalSrc ?? product.images?.[0]?.url ?? "",
+        price: variant.price ?? "",
+        vendor: product.vendor ?? "",
+      })),
+    );
     update(rule.id, {
-      giftProductId: product.id,
-      giftVariantId: variant.id,
-      giftTitle:
-        variant.title && variant.title !== "Default Title"
-          ? `${product.title} – ${variant.title}`
-          : product.title,
-      giftImage: product.images?.[0]?.originalSrc ?? product.images?.[0]?.url ?? "",
-      giftPrice: variant.price ?? "",
-      giftVendor: product.vendor ?? "",
-      name: rule.name || `Free ${product.title}`,
+      giftOptions,
+      name: rule.name || (giftOptions.length === 1 ? `Free ${giftOptions[0].title}` : "Free gift"),
     });
   };
+
+  const removeGiftOption = (rule: GiftRule, variantId: string) =>
+    update(rule.id, { giftOptions: rule.giftOptions.filter((o) => o.variantId !== variantId) });
 
   const describeTrigger = (g: GiftRule) => {
     const qty = g.minTriggerQty > 1 ? `${g.minTriggerQty}+ of ` : "";
@@ -126,7 +134,7 @@ export default function Gifts() {
             <TextField label="Internal name" value={editing.name} onChange={(name) => update(editing.id, { name })} />
             <TextField
               label="Discount message"
-              details="Shown at checkout and in the gift popup."
+              details="Shown at checkout next to the $0 gift."
               value={editing.message}
               onChange={(message) => update(editing.id, { message })}
             />
@@ -168,7 +176,7 @@ export default function Gifts() {
                       onChange={(on) =>
                         update(editing.id, {
                           triggerVendors: on
-                            ? [...editing.triggerVendors, vendor]
+                            ? unique([...editing.triggerVendors, vendor])
                             : editing.triggerVendors.filter((v) => v !== vendor),
                         })
                       }
@@ -187,29 +195,45 @@ export default function Gifts() {
           </s-stack>
         </s-section>
 
-        <s-section heading="…give this free gift">
+        <s-section heading="…let the shopper choose a free gift">
           <s-stack direction="block" gap="base">
-            <s-stack direction="inline" gap="base" alignItems="center">
-              {editing.giftImage && <s-thumbnail src={editing.giftImage} alt={editing.giftTitle} size="small" />}
-              <s-text>{editing.giftTitle || "No gift selected"}</s-text>
-              <s-button onClick={() => pickGift(editing)}>{editing.giftVariantId ? "Change gift" : "Choose gift"}</s-button>
+            <s-paragraph>
+              Shoppers see these in the cart drawer and on the cart page under “Choose your free gift” and pick one.
+            </s-paragraph>
+            {editing.giftOptions.map((option) => (
+              <s-stack key={option.variantId} direction="inline" gap="base" alignItems="center">
+                {option.image && <s-thumbnail src={option.image} alt={option.title} size="small" />}
+                <s-text>{option.title}</s-text>
+                {option.price && <s-text color="subdued">${option.price}</s-text>}
+                <s-button variant="tertiary" tone="critical" onClick={() => removeGiftOption(editing, option.variantId)}>
+                  Remove
+                </s-button>
+              </s-stack>
+            ))}
+            <s-stack direction="inline">
+              <s-button onClick={() => pickGifts(editing)}>
+                {editing.giftOptions.length ? "Add or change gifts" : "Choose gifts"}
+              </s-button>
             </s-stack>
             <s-text color="subdued">
-              Tip: use a product (or variant) that is published to your Online Store. The first variant is used.
-              Choose the same product as the trigger for classic buy-one-get-one.
+              Use products that are published to your Online Store. Pick specific variants in the picker to offer them
+              separately. Choose the trigger product itself for classic buy-one-get-one.
             </s-text>
             <NumberField
               label="Free quantity"
+              details="How many free units the shopper gets in total."
               min={1}
               value={editing.giftQuantity}
               onChange={(giftQuantity) => update(editing.id, { giftQuantity: Math.max(1, Math.round(giftQuantity)) })}
             />
-            <Checkbox
-              label="Add the gift to the cart automatically"
-              details="Off: shoppers see a popup recommending the gift and add it with one click."
-              checked={editing.autoAdd}
-              onChange={(autoAdd) => update(editing.id, { autoAdd })}
-            />
+            {editing.giftOptions.length <= 1 && (
+              <Checkbox
+                label="Add the gift to the cart automatically"
+                details="Off: the gift is offered at the bottom of the cart and the shopper adds it with one click."
+                checked={editing.autoAdd}
+                onChange={(autoAdd) => update(editing.id, { autoAdd })}
+              />
+            )}
           </s-stack>
         </s-section>
 
@@ -253,7 +277,7 @@ export default function Gifts() {
                   <s-table-cell>{describeTrigger(g)}</s-table-cell>
                   <s-table-cell>
                     {g.giftQuantity > 1 ? `${g.giftQuantity} × ` : ""}
-                    {g.giftTitle || "—"}
+                    {g.giftOptions.map((o) => o.title).join(" / ") || "—"}
                   </s-table-cell>
                   <s-table-cell>
                     {g.enabled ? <s-badge tone="success">Active</s-badge> : <s-badge>Paused</s-badge>}

@@ -4,23 +4,28 @@ export interface GiftRule {
   id: string;
   enabled: boolean;
   name: string;
-  /** Shown at checkout next to the discount and in the storefront popup. */
+  /** Shown at checkout next to the discount. */
   message: string;
   triggerType: TriggerType;
   triggerProducts: { id: string; title: string }[];
   triggerVendors: string[];
   /** Units of trigger items the cart needs before the gift unlocks. */
   minTriggerQty: number;
-  giftProductId: string;
-  giftVariantId: string;
-  giftTitle: string;
-  giftImage: string;
-  giftPrice: string;
-  giftVendor: string;
+  /** Gifts the shopper can choose from (they pick one). */
+  giftOptions: GiftOption[];
   /** Free units granted. */
   giftQuantity: number;
-  /** Add the gift automatically instead of showing a popup offer. */
+  /** With a single gift option: add it automatically instead of offering it in the cart. */
   autoAdd: boolean;
+}
+
+export interface GiftOption {
+  productId: string;
+  variantId: string;
+  title: string;
+  image: string;
+  price: string;
+  vendor: string;
 }
 
 export interface KitTier {
@@ -70,12 +75,7 @@ export function newGiftRule(): GiftRule {
     triggerProducts: [],
     triggerVendors: [],
     minTriggerQty: 1,
-    giftProductId: "",
-    giftVariantId: "",
-    giftTitle: "",
-    giftImage: "",
-    giftPrice: "",
-    giftVendor: "",
+    giftOptions: [],
     giftQuantity: 1,
     autoAdd: false,
   };
@@ -85,9 +85,46 @@ export function normalizeConfig(raw: unknown): AppConfig {
   const value = (raw && typeof raw === "object" ? raw : {}) as Partial<AppConfig>;
   return {
     discountId: value.discountId ?? null,
-    gifts: (value.gifts ?? []).map((g) => ({ ...newGiftRule(), ...g })),
-    kit: { ...DEFAULT_CONFIG.kit, ...(value.kit ?? {}) },
+    gifts: (value.gifts ?? []).map(normalizeGift),
+    kit: normalizeKit({ ...DEFAULT_CONFIG.kit, ...(value.kit ?? {}) }),
   };
+}
+
+type LegacyGift = Partial<GiftRule> & {
+  giftProductId?: string;
+  giftVariantId?: string;
+  giftTitle?: string;
+  giftImage?: string;
+  giftPrice?: string;
+  giftVendor?: string;
+};
+
+/** Older configs stored a single gift; convert it to a one-item option list. */
+function normalizeGift(raw: LegacyGift): GiftRule {
+  const { giftProductId, giftVariantId, giftTitle, giftImage, giftPrice, giftVendor, ...rest } = raw;
+  const rule = { ...newGiftRule(), ...rest };
+  if (!raw.giftOptions && giftVariantId) {
+    rule.giftOptions = [
+      {
+        productId: giftProductId ?? "",
+        variantId: giftVariantId,
+        title: giftTitle ?? "",
+        image: giftImage ?? "",
+        price: giftPrice ?? "",
+        vendor: giftVendor ?? "",
+      },
+    ];
+  }
+  rule.triggerVendors = unique(rule.triggerVendors);
+  return rule;
+}
+
+function normalizeKit(kit: KitConfig): KitConfig {
+  return { ...kit, vendors: unique(kit.vendors) };
+}
+
+export function unique<T>(items: T[]): T[] {
+  return [...new Set(items)];
 }
 
 /** Storefront copy (theme extension): everything the popup and kit builder need. */
@@ -112,7 +149,7 @@ export function functionConfig(config: AppConfig) {
       triggerProductIds: g.triggerProducts.map((p) => p.id),
       triggerVendors: g.triggerVendors,
       minTriggerQty: g.minTriggerQty,
-      giftVariantId: g.giftVariantId,
+      giftVariantIds: g.giftOptions.map((o) => o.variantId),
       giftQuantity: g.giftQuantity,
     })),
     kit: {

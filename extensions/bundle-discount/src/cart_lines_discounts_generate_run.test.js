@@ -27,7 +27,7 @@ const giftRule = {
   triggerProductIds: ["P1"],
   triggerVendors: [],
   minTriggerQty: 1,
-  giftVariantId: "GV",
+  giftVariantIds: ["GV"],
   giftQuantity: 1,
 };
 
@@ -77,6 +77,31 @@ describe("free gift", () => {
     expect(run([line("L1", "GV", "PG", "Acme", 1)], { gifts: [bogo] }).operations).toEqual([]);
     const result = run([line("L1", "GV", "PG", "Acme", 2)], { gifts: [bogo] });
     expect(candidates(result)[0].targets).toEqual([{ cartLine: { id: "L1", quantity: 1 } }]);
+  });
+
+  it("lets the shopper pick any one of several gift options", () => {
+    const rule = { ...giftRule, giftVariantIds: ["GA", "GB", "GC"] };
+    const result = run(
+      [
+        line("L1", "V1", "P1", "Acme"),
+        line("L2", "GB", "PB", "Acme", 1, { gift: "g1" }),
+        line("L3", "GC", "PC", "Acme", 1),
+      ],
+      { gifts: [rule] },
+    );
+    // Only one free unit in total, and the tagged gift line wins.
+    expect(candidates(result).flatMap((c) => c.targets)).toEqual([
+      { cartLine: { id: "L2", quantity: 1 } },
+    ]);
+  });
+
+  it("still reads the older single-gift format", () => {
+    const { giftVariantIds, ...legacy } = giftRule;
+    const result = run(
+      [line("L1", "V1", "P1", "Acme"), line("L2", giftVariantIds[0], "PG", "Acme")],
+      { gifts: [{ ...legacy, giftVariantId: "GV" }] },
+    );
+    expect(candidates(result)).toHaveLength(1);
   });
 
   it("triggers by vendor", () => {

@@ -5,7 +5,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { loadConfig, saveConfig } from "../lib/config.server";
-import type { KitConfig } from "../lib/config";
+import { unique, type KitConfig } from "../lib/config";
 import { Checkbox, NumberField, TextField } from "../components/fields";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -140,7 +140,7 @@ export default function Kit() {
                 label={vendor}
                 checked={kit.vendors.includes(vendor)}
                 onChange={(on) =>
-                  set({ vendors: on ? [...kit.vendors, vendor] : kit.vendors.filter((v) => v !== vendor) })
+                  set({ vendors: on ? unique([...kit.vendors, vendor]) : kit.vendors.filter((v) => v !== vendor) })
                 }
               />
             ))}
